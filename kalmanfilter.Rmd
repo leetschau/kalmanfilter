@@ -1,0 +1,93 @@
+---
+title: "Kalman Filter Example"
+output: html_notebook
+---
+
+本文是基于 [Kalman filter example visualised with R](https://magesblog.com/post/2015-01-06-kalman-filter-example-visualised-with-r/) 实现一个 Kalman Filter 的实例。
+
+# 预备知识
+
+## Mean Vector and Covariance Matrix
+
+分析多变量问题时常用 mean 和 covariance matrix 表示这个数据集的中心位置和分散程度。
+
+对于包含 $p$ 个变量（特征）、$n$ 个观测的数据集 $X$，如果将每个变量的全集看作是一个维度（坐标轴），
+则 $X$ 是 $p$ 维空间中 $n$ 个点，它的 mean vector 是对每个变量的所有观测取平均值，
+得到一个长度为 $p$ 的向量，是 $p$ 维空间中的一个点，也叫做质心(centoid)。
+
+下面的例子来自于 [6.5.4.1. Mean Vector and Covariance Matrix](https://www.itl.nist.gov/div898/handbook/pmc/section5/pmc541.htm)，首先构造数据集：
+```{r}
+len <- c(4.0, 4.2, 3.9, 4.3, 4.1)
+width <- c(2.0, 2.1, 2.0, 2.1, 2.2)
+height <- c(0.60, 0.59, 0.58, 0.62, 0.63)
+
+X <- data.frame(length = len, width = width, height = height);X
+```
+
+计算均值和方差矩阵：
+```{r}
+colMeans(X)
+cov(X)
+```
+
+
+
+
+
+## Outer product
+
+`outer()` 表示矩阵的 outer product，算法见 [wikipedia](https://en.wikipedia.org/wiki/Outer_product)，
+`outer(x, y, FUN)` （其中 $x$ 是长度为 $n$ 的向量，$y$ 是长度为 $m$ 的向量的）返回结果是一个 $n \times m$ 的矩阵：
+$$
+\left[
+\begin{matrix}
+FUN(x_1, y_1) & FUN(x_1, y_2) & \dots & FUN(x_1, y_m) \\
+FUN(x_2, y_1) & FUN(x_2, y_2) & \dots & FUN(x_2, y_m) \\
+\dots \\
+FUN(x_n, y_1) & FUN(x_n, y_2) & \dots & FUN(x_n, y_m)
+\end{matrix}
+\right]
+$$
+
+例如：
+```{r}
+x <- seq(10, 50, length.out = 5)
+y <- seq(1, 7)
+myadd <- function(x, y) return(x * 10 + y)
+outer(x, y, myadd)
+```
+
+# 实例分析
+
+## 初始位置
+
+小车的初始位置为期望 $\hat x = (0.2, -0.2)$，相关性矩阵为
+$$
+\Sigma = \left[ \begin{matrix}
+0.4 & 0.3 \\ 0.3 & 0.45
+\end{matrix} \right]
+$$
+
+绘制小车初始状态的先验概率分布：
+```{r}
+library(mnormt)
+xhat <- c(0.2, -0.2)
+Sigma <- matrix(c(0.4, 0.3, 0.3, 0.45), ncol=2)
+x1 <- seq(-2, 4, length=151)
+x2 <- seq(-4, 2, length=151)
+f <- function(x1, x2, mean=xhat, varcov=Sigma)
+  dmnorm(cbind(x1, x2), mean, varcov)
+z <- outer(x1,x2, f)
+mycols <- topo.colors(100,0.5)
+image(x1, x2, z, col=mycols, main="Prior density",
+      xlab=expression('x'[1]), ylab=expression('x'[2]))
+contour(x1, x2, z, add=TRUE)
+points(0.2, -0.2, pch=19)
+text(0.1, -0.2, labels = expression(hat(x)), adj = 1)
+```
+
+其中 `dmnorm(x, mean, varcov)` 的参数 `x` 是一个 $n$ 行 $d$ 列矩阵，每行代表一个观测点（$d$ 维向量），共 $n$ 个观测点，函数返回值为：在均值为 `mean`（长度为 $d$ 的向量，表示 $d$ 维空间中的一个点）、方差为 `varcov` 的正态分布空间下，每个观测点的概率密度值，所以是一个长度为 $n$ 的向量。
+`z = outer(x1,x2, f)` 表示 `x1` 和 `x2` 组成的二维平面上的每个点，在均值为 `xhat`、方差为 `Sigma` 的正态分布下的概率。
+
+## 传感器信息
+
